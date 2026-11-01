@@ -3,11 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>Батыр и Баурсаки 2</title>
+<title>Батыр и Баурсаки: Моё лицо</title>
 <style>
-  :root {
-    --vh: 1vh;
-  }
+  :root { --vh: 1vh; }
 
   * {
     box-sizing: border-box;
@@ -41,9 +39,15 @@
     max-height: calc(var(--vh) * 100);
     touch-action: none;
   }
+
+  #faceInput {
+    display: none;
+  }
 </style>
 </head>
 <body>
+
+<input id="faceInput" type="file" accept="image/*">
 <canvas id="game"></canvas>
 
 <script>
@@ -58,6 +62,7 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
+  const faceInput = document.getElementById("faceInput");
 
   const W = 420;
   const H = 740;
@@ -68,9 +73,10 @@
 
   let state = "menu";
   let last = 0;
+
   let score = 0;
-  let displayScore = 0;
-  let best = Number(localStorage.getItem("batyr_baursak_best_v2") || 0);
+  let best = Number(localStorage.getItem("batyr_face_best") || 0);
+
   let speed = 250;
   let distance = 0;
   let bg = 0;
@@ -78,15 +84,25 @@
   let flash = 0;
   let muted = false;
   let combo = 0;
-  let maxCombo = 0;
 
   let audio = null;
 
+  let faceImg = new Image();
+  let hasFace = false;
+
+  const savedFace = localStorage.getItem("batyr_saved_face");
+  if (savedFace) {
+    faceImg.onload = () => {
+      hasFace = true;
+    };
+    faceImg.src = savedFace;
+  }
+
   const player = {
-    x: 80,
+    x: 82,
     y: GROUND,
-    w: 64,
-    h: 90,
+    w: 70,
+    h: 96,
     vy: 0,
     jumps: 0,
     shield: 0,
@@ -100,7 +116,6 @@
   let bonuses = [];
   let particles = [];
   let clouds = [];
-  let birds = [];
 
   let obstacleTimer = 0;
   let coinTimer = 0;
@@ -112,15 +127,6 @@
       y: 55 + Math.random() * 160,
       s: 0.6 + Math.random() * 0.9,
       v: 8 + Math.random() * 18
-    });
-  }
-
-  for (let i = 0; i < 5; i++) {
-    birds.push({
-      x: Math.random() * W,
-      y: 120 + Math.random() * 180,
-      v: 20 + Math.random() * 25,
-      p: Math.random() * 10
     });
   }
 
@@ -159,26 +165,15 @@
       osc.stop(t + 0.14);
     }
 
-    if (type === "gold") {
-      osc.type = "square";
-      osc.frequency.setValueAtTime(500, t);
-      osc.frequency.setValueAtTime(760, t + 0.08);
-      osc.frequency.setValueAtTime(1100, t + 0.16);
-      gain.gain.setValueAtTime(0.08, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-      osc.start(t);
-      osc.stop(t + 0.36);
-    }
-
     if (type === "bonus") {
-      osc.type = "triangle";
+      osc.type = "square";
       osc.frequency.setValueAtTime(440, t);
       osc.frequency.setValueAtTime(660, t + 0.07);
       osc.frequency.setValueAtTime(880, t + 0.14);
-      gain.gain.setValueAtTime(0.1, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.33);
       osc.start(t);
-      osc.stop(t + 0.33);
+      osc.stop(t + 0.34);
     }
 
     if (type === "hit") {
@@ -196,16 +191,60 @@
     if (navigator.vibrate) navigator.vibrate(ms);
   }
 
+  faceInput.addEventListener("change", e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = ev => {
+      const img = new Image();
+
+      img.onload = () => {
+        const size = 300;
+        const off = document.createElement("canvas");
+        off.width = size;
+        off.height = size;
+
+        const octx = off.getContext("2d");
+
+        const scale = Math.max(size / img.width, size / img.height);
+        const sw = size / scale;
+        const sh = size / scale;
+        const sx = (img.width - sw) / 2;
+        const sy = (img.height - sh) / 2;
+
+        octx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
+
+        const data = off.toDataURL("image/jpeg", 0.85);
+
+        faceImg = new Image();
+        faceImg.onload = () => {
+          hasFace = true;
+        };
+        faceImg.src = data;
+
+        try {
+          localStorage.setItem("batyr_saved_face", data);
+        } catch (err) {
+          console.log("Фото слишком большое для сохранения, но в игре оно работает.");
+        }
+      };
+
+      img.src = ev.target.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+
   function reset() {
     score = 0;
-    displayScore = 0;
     speed = 250;
     distance = 0;
     bg = 0;
     shake = 0;
     flash = 0;
     combo = 0;
-    maxCombo = 0;
 
     player.y = GROUND;
     player.vy = 0;
@@ -231,16 +270,16 @@
     state = "play";
   }
 
-  function over() {
+  function gameOver() {
     state = "over";
     shake = 18;
     flash = 0.45;
     vibrate(120);
     beep("hit");
 
-    if (score > best) {
-      best = score;
-      localStorage.setItem("batyr_baursak_best_v2", String(best));
+    if (Math.floor(score) > best) {
+      best = Math.floor(score);
+      localStorage.setItem("batyr_face_best", String(best));
     }
   }
 
@@ -251,25 +290,26 @@
       player.vy = player.jumps === 0 ? -720 : -620;
       player.jumps++;
       player.fastFall = false;
-      dust(player.x + 30, player.y - 5, 12);
+      dust(player.x + 35, player.y - 5, 12);
       beep("jump");
     }
   }
 
   function fastFall() {
     if (state !== "play") return;
+
     if (player.y < GROUND - 20) {
       player.vy = 950;
       player.fastFall = true;
-      spark(player.x + 30, player.y - 50, 10, "rgba(255,255,255,");
+      spark(player.x + 35, player.y - 50, 10, "rgba(255,255,255,");
     }
   }
 
   function pRect() {
     return {
-      x: player.x + 10,
-      y: player.y - player.h + 13,
-      w: player.w - 18,
+      x: player.x + 12,
+      y: player.y - player.h + 12,
+      w: player.w - 20,
       h: player.h - 18
     };
   }
@@ -306,6 +346,7 @@
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const s = 70 + Math.random() * 230;
+
       particles.push({
         x, y,
         vx: Math.cos(a) * s,
@@ -322,7 +363,7 @@
     let type = "wolf";
 
     if (distance > 1800 && r < 0.25) type = "eagle";
-    else if (r < 0.48) type = "rock";
+    else if (r < 0.5) type = "rock";
     else type = "wolf";
 
     if (type === "wolf") {
@@ -361,20 +402,13 @@
 
   function spawnCoins() {
     const count = 4 + Math.floor(Math.random() * 4);
-    const pattern = Math.random();
     const baseX = W + 40;
     const baseY = 450 + Math.random() * 75;
 
     for (let i = 0; i < count; i++) {
-      let y = baseY;
-
-      if (pattern < 0.33) y = baseY - Math.sin(i * 0.8) * 35;
-      else if (pattern < 0.66) y = baseY - i * 10;
-      else y = baseY + (i % 2) * 30;
-
       coins.push({
         x: baseX + i * 43,
-        y,
+        y: baseY - Math.sin(i * 0.8) * 35,
         r: 13,
         rot: Math.random() * 6,
         gold: Math.random() < 0.08
@@ -384,6 +418,7 @@
 
   function spawnBonus() {
     const kind = Math.random() < 0.55 ? "shield" : "magnet";
+
     bonuses.push({
       kind,
       x: W + 50,
@@ -403,7 +438,6 @@
     bg += speed * dt;
 
     score += dt * 6;
-    displayScore += (score - displayScore) * Math.min(1, dt * 10);
 
     obstacleTimer -= dt;
     coinTimer -= dt;
@@ -429,7 +463,7 @@
 
     if (player.y >= GROUND) {
       if (player.jumps > 0 && player.vy > 500) {
-        dust(player.x + 30, GROUND - 3, 14);
+        dust(player.x + 35, GROUND - 3, 14);
         if (player.fastFall) {
           shake = 5;
           vibrate(25);
@@ -493,15 +527,6 @@
       }
     }
 
-    for (const b of birds) {
-      b.x -= b.v * dt;
-      b.p += dt * 8;
-      if (b.x < -60) {
-        b.x = W + 80;
-        b.y = 100 + Math.random() * 200;
-      }
-    }
-
     obstacles = obstacles.filter(o => o.x + o.w > -80);
     coins = coins.filter(c => c.x > -60 && !c.dead);
     bonuses = bonuses.filter(b => b.x > -60 && !b.dead);
@@ -517,7 +542,7 @@
           score += 60 + combo * 2;
           combo += 3;
           spark(c.x, c.y, 22, "rgba(255,215,0,");
-          beep("gold");
+          beep("bonus");
           shake = 3;
         } else {
           score += 12 + Math.min(30, combo);
@@ -525,8 +550,6 @@
           spark(c.x, c.y, 8, "rgba(255,210,55,");
           beep("coin");
         }
-
-        maxCombo = Math.max(maxCombo, combo);
       }
     }
 
@@ -577,7 +600,7 @@
           vibrate(60);
         } else if (player.inv <= 0) {
           combo = 0;
-          over();
+          gameOver();
         }
       }
     }
@@ -595,6 +618,19 @@
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
+  }
+
+  function drawImageCover(img, x, y, w, h) {
+    const iw = img.width;
+    const ih = img.height;
+
+    const scale = Math.max(w / iw, h / ih);
+    const sw = w / scale;
+    const sh = h / scale;
+    const sx = (iw - sw) / 2;
+    const sy = (ih - sh) / 2;
+
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
   }
 
   function drawBackground() {
@@ -630,6 +666,11 @@
     ctx.fillRect(0, 0, W, H);
 
     if (phase === 3) {
+      ctx.fillStyle = "#fef3c7";
+      ctx.beginPath();
+      ctx.arc(335, 100, 34, 0, Math.PI * 2);
+      ctx.fill();
+
       ctx.fillStyle = "rgba(255,255,255,0.9)";
       for (let i = 0; i < 35; i++) {
         const x = (i * 73 + bg * 0.02) % W;
@@ -638,11 +679,6 @@
         ctx.arc(x, y, 1.4, 0, Math.PI * 2);
         ctx.fill();
       }
-
-      ctx.fillStyle = "#fef3c7";
-      ctx.beginPath();
-      ctx.arc(335, 100, 34, 0, Math.PI * 2);
-      ctx.fill();
     } else {
       ctx.fillStyle = "#ffd34d";
       ctx.beginPath();
@@ -662,17 +698,6 @@
       ctx.arc(25, 24, 30, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    }
-
-    ctx.strokeStyle = "rgba(30,41,59,0.6)";
-    ctx.lineWidth = 3;
-    for (const b of birds) {
-      const wing = Math.sin(b.p) * 7;
-      ctx.beginPath();
-      ctx.moveTo(b.x, b.y);
-      ctx.quadraticCurveTo(b.x + 10, b.y - wing, b.x + 20, b.y);
-      ctx.quadraticCurveTo(b.x + 30, b.y - wing, b.x + 40, b.y);
-      ctx.stroke();
     }
 
     ctx.fillStyle = phase === 3 ? "#334155" : "#79b5d2";
@@ -730,7 +755,7 @@
       ctx.strokeStyle = "#38e8ff";
       ctx.lineWidth = 5;
       ctx.beginPath();
-      ctx.arc(x + 34, y - 48, 58, 0, Math.PI * 2);
+      ctx.arc(x + 36, y - 52, 60, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -742,24 +767,24 @@
 
     ctx.fillStyle = "#7a3f20";
     ctx.beginPath();
-    ctx.ellipse(33, -35, 38, 24, 0, 0, Math.PI * 2);
+    ctx.ellipse(35, -35, 40, 24, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#8d4b27";
     ctx.beginPath();
-    ctx.ellipse(66, -54, 19, 14, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(70, -54, 19, 14, -0.3, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#3b1d12";
     ctx.beginPath();
-    ctx.moveTo(52, -65);
-    ctx.lineTo(62, -85);
-    ctx.lineTo(67, -62);
+    ctx.moveTo(56, -65);
+    ctx.lineTo(66, -85);
+    ctx.lineTo(71, -62);
     ctx.fill();
 
     ctx.fillStyle = "#111827";
     ctx.beginPath();
-    ctx.arc(73, -58, 2.5, 0, Math.PI * 2);
+    ctx.arc(77, -58, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = "#4a2614";
@@ -767,49 +792,93 @@
     const leg = Math.sin(t / 65) * 9;
 
     ctx.beginPath();
-    ctx.moveTo(10, -18);
-    ctx.lineTo(5 + leg, 0);
-    ctx.moveTo(30, -17);
-    ctx.lineTo(27 - leg, 0);
-    ctx.moveTo(48, -18);
-    ctx.lineTo(48 + leg, 0);
-    ctx.moveTo(62, -20);
-    ctx.lineTo(65 - leg, 0);
+    ctx.moveTo(12, -18);
+    ctx.lineTo(7 + leg, 0);
+    ctx.moveTo(32, -17);
+    ctx.lineTo(29 - leg, 0);
+    ctx.moveTo(50, -18);
+    ctx.lineTo(50 + leg, 0);
+    ctx.moveTo(64, -20);
+    ctx.lineTo(67 - leg, 0);
     ctx.stroke();
 
     ctx.strokeStyle = "#2b150d";
     ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.moveTo(-2, -43);
+    ctx.moveTo(0, -43);
     ctx.quadraticCurveTo(-24, -52, -18, -72);
     ctx.stroke();
 
     ctx.fillStyle = "#2563eb";
-    rr(23, -72, 22, 35, 5);
-    ctx.fill();
-
-    ctx.fillStyle = "#f3b35b";
-    ctx.beginPath();
-    ctx.arc(34, -84, 12, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#d71920";
-    ctx.beginPath();
-    ctx.moveTo(18, -92);
-    ctx.lineTo(51, -92);
-    ctx.lineTo(42, -107);
-    ctx.lineTo(25, -107);
-    ctx.closePath();
+    rr(23, -72, 25, 37, 6);
     ctx.fill();
 
     ctx.strokeStyle = "#f7d46b";
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(43, -65);
-    ctx.lineTo(65, -42);
+    ctx.moveTo(46, -65);
+    ctx.lineTo(67, -42);
     ctx.stroke();
 
+    drawFaceOnHero(36, -88, 21);
+
     ctx.restore();
+  }
+
+  function drawFaceOnHero(cx, cy, r) {
+    ctx.save();
+
+    ctx.fillStyle = "#f3b35b";
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    if (hasFace && faceImg.complete) {
+      drawImageCover(faceImg, cx - r, cy - r, r * 2, r * 2);
+    } else {
+      ctx.fillStyle = "#f3b35b";
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+      ctx.fillStyle = "#111";
+      ctx.beginPath();
+      ctx.arc(cx - 7, cy - 3, 2.3, 0, Math.PI * 2);
+      ctx.arc(cx + 7, cy - 3, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#7c2d12";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy + 4, 7, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#d71920";
+    ctx.beginPath();
+    ctx.moveTo(cx - 19, cy - 17);
+    ctx.lineTo(cx + 19, cy - 17);
+    ctx.lineTo(cx + 10, cy - 35);
+    ctx.lineTo(cx - 10, cy - 35);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "#facc15";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12, cy - 23);
+    ctx.lineTo(cx + 12, cy - 23);
+    ctx.stroke();
   }
 
   function drawWolf(o) {
@@ -1003,7 +1072,7 @@
     ctx.font = "bold 23px Arial";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("Счёт: " + Math.floor(displayScore), 24, 34);
+    ctx.fillText("Счёт: " + Math.floor(score), 24, 34);
 
     if (combo > 1) {
       ctx.fillStyle = "rgba(255,193,7,0.95)";
@@ -1032,14 +1101,11 @@
       ctx.fillText(text, 24, y + 17);
     }
 
-    drawSmallButtons();
+    drawSoundButton();
   }
 
-  function drawSmallButtons() {
+  function drawSoundButton() {
     ctx.fillStyle = "rgba(0,0,0,0.3)";
-    rr(W - 110, 12, 44, 42, 14);
-    ctx.fill();
-
     rr(W - 58, 12, 44, 42, 14);
     ctx.fill();
 
@@ -1047,98 +1113,7 @@
     ctx.font = "bold 21px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(state === "pause" ? "▶" : "Ⅱ", W - 88, 34);
     ctx.fillText(muted ? "×" : "♪", W - 36, 34);
-  }
-
-  function drawMenu() {
-    drawBackground();
-
-    ctx.fillStyle = "rgba(0,0,0,0.42)";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.fillStyle = "#fff7c2";
-    ctx.font = "bold 41px Arial";
-    ctx.fillText("Батыр", W / 2, 175);
-    ctx.fillText("и Баурсаки 2", W / 2, 225);
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "18px Arial";
-    ctx.fillText("Тап — прыжок, свайп вниз — быстро упасть", W / 2, 292);
-
-    ctx.fillStyle = "#16a34a";
-    rr(82, 360, 256, 74, 22);
-    ctx.fill();
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 31px Arial";
-    ctx.fillText("Играть", W / 2, 397);
-
-    ctx.font = "17px Arial";
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.fillText("Рекорд: " + best, W / 2, 470);
-    ctx.fillText("Двойной прыжок, щит, магнит и золотые баурсаки", W / 2, 505);
-
-    drawSmallButtons();
-  }
-
-  function drawPause() {
-    drawScene();
-
-    ctx.fillStyle = "rgba(0,0,0,0.48)";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 42px Arial";
-    ctx.fillText("Пауза", W / 2, 285);
-
-    ctx.fillStyle = "#2563eb";
-    rr(82, 360, 256, 74, 22);
-    ctx.fill();
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 29px Arial";
-    ctx.fillText("Продолжить", W / 2, 397);
-
-    drawSmallButtons();
-  }
-
-  function drawGameOver() {
-    drawScene();
-
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 39px Arial";
-    ctx.fillText("Игра окончена", W / 2, 225);
-
-    ctx.font = "bold 26px Arial";
-    ctx.fillText("Счёт: " + Math.floor(score), W / 2, 294);
-
-    ctx.fillStyle = "#fff7c2";
-    ctx.font = "21px Arial";
-    ctx.fillText("Рекорд: " + best, W / 2, 330);
-    ctx.fillText("Лучшее комбо: x" + maxCombo, W / 2, 362);
-
-    ctx.fillStyle = "#2563eb";
-    rr(82, 415, 256, 74, 22);
-    ctx.fill();
-
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 31px Arial";
-    ctx.fillText("Ещё раз", W / 2, 452);
-
-    drawSmallButtons();
   }
 
   function drawScene() {
@@ -1164,6 +1139,85 @@
     }
   }
 
+  function drawMenu() {
+    drawBackground();
+
+    ctx.fillStyle = "rgba(0,0,0,0.42)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#fff7c2";
+    ctx.font = "bold 38px Arial";
+    ctx.fillText("Батыр", W / 2, 145);
+    ctx.fillText("с твоим лицом", W / 2, 190);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px Arial";
+    ctx.fillText("Тап — прыжок, свайп вниз — быстро упасть", W / 2, 252);
+
+    ctx.save();
+    ctx.translate(125, 365);
+    drawPlayer();
+    ctx.restore();
+
+    ctx.fillStyle = "#16a34a";
+    rr(82, 340, 256, 68, 22);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 30px Arial";
+    ctx.fillText("Играть", W / 2, 374);
+
+    ctx.fillStyle = "#f59e0b";
+    rr(82, 430, 256, 62, 20);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 24px Arial";
+    ctx.fillText(hasFace ? "Сменить лицо" : "Загрузить лицо", W / 2, 461);
+
+    ctx.font = "17px Arial";
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.fillText("Рекорд: " + best, W / 2, 530);
+    ctx.fillText("Фото хранится только в браузере", W / 2, 562);
+
+    drawSoundButton();
+  }
+
+  function drawGameOver() {
+    drawScene();
+
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 39px Arial";
+    ctx.fillText("Игра окончена", W / 2, 225);
+
+    ctx.font = "bold 26px Arial";
+    ctx.fillText("Счёт: " + Math.floor(score), W / 2, 294);
+
+    ctx.fillStyle = "#fff7c2";
+    ctx.font = "21px Arial";
+    ctx.fillText("Рекорд: " + best, W / 2, 332);
+    ctx.fillText("Комбо: x" + combo, W / 2, 365);
+
+    ctx.fillStyle = "#2563eb";
+    rr(82, 415, 256, 74, 22);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 31px Arial";
+    ctx.fillText("Ещё раз", W / 2, 452);
+
+    drawSoundButton();
+  }
+
   function render() {
     ctx.save();
 
@@ -1173,7 +1227,6 @@
 
     if (state === "menu") drawMenu();
     else if (state === "play") drawScene();
-    else if (state === "pause") drawPause();
     else if (state === "over") drawGameOver();
 
     ctx.restore();
@@ -1189,22 +1242,10 @@
 
   function pos(e) {
     const rect = canvas.getBoundingClientRect();
-    let x, y;
-
-    if (e.touches && e.touches.length) {
-      x = e.touches[0].clientX;
-      y = e.touches[0].clientY;
-    } else if (e.changedTouches && e.changedTouches.length) {
-      x = e.changedTouches[0].clientX;
-      y = e.changedTouches[0].clientY;
-    } else {
-      x = e.clientX;
-      y = e.clientY;
-    }
 
     return {
-      x: (x - rect.left) * (W / rect.width),
-      y: (y - rect.top) * (H / rect.height)
+      x: (e.clientX - rect.left) * (W / rect.width),
+      y: (e.clientY - rect.top) * (H / rect.height)
     };
   }
 
@@ -1212,15 +1253,14 @@
     return p.x >= W - 62 && p.x <= W - 10 && p.y >= 8 && p.y <= 60;
   }
 
-  function pauseBtn(p) {
-    return p.x >= W - 114 && p.x <= W - 62 && p.y >= 8 && p.y <= 60;
+  function playBtn(p) {
+    if (state === "menu") return p.x >= 82 && p.x <= 338 && p.y >= 340 && p.y <= 408;
+    if (state === "over") return p.x >= 82 && p.x <= 338 && p.y >= 415 && p.y <= 489;
+    return false;
   }
 
-  function mainBtn(p) {
-    if (state === "menu") return p.x >= 82 && p.x <= 338 && p.y >= 360 && p.y <= 434;
-    if (state === "over") return p.x >= 82 && p.x <= 338 && p.y >= 415 && p.y <= 489;
-    if (state === "pause") return p.x >= 82 && p.x <= 338 && p.y >= 360 && p.y <= 434;
-    return false;
+  function uploadBtn(p) {
+    return state === "menu" && p.x >= 82 && p.x <= 338 && p.y >= 430 && p.y <= 492;
   }
 
   let startTouch = null;
@@ -1237,15 +1277,13 @@
       return;
     }
 
-    if (pauseBtn(p)) {
-      if (state === "play") state = "pause";
-      else if (state === "pause") state = "play";
+    if (uploadBtn(p)) {
+      faceInput.click();
       return;
     }
 
-    if (mainBtn(p)) {
-      if (state === "pause") state = "play";
-      else start();
+    if (playBtn(p)) {
+      start();
       return;
     }
 
@@ -1274,16 +1312,10 @@
 
     if (e.code === "Space" || e.code === "ArrowUp") {
       if (state === "menu" || state === "over") start();
-      else if (state === "pause") state = "play";
       else jump();
     }
 
     if (e.code === "ArrowDown") fastFall();
-
-    if (e.code === "KeyP") {
-      if (state === "play") state = "pause";
-      else if (state === "pause") state = "play";
-    }
 
     if (e.code === "KeyM") muted = !muted;
   });
